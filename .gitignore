@@ -1,0 +1,5 @@
+.venv/
+__pycache__/
+server/monitor.db
+.env
+.DS_Store
