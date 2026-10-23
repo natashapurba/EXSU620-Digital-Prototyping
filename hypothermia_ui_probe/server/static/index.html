@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Perioperative Temperature Monitor</title>
+<style>
+:root{--bg:#f4f6f8;--card:#fff;--ink:#14202b;--mute:#5d6b78;--line:#dde3e8;
+--green:#1a9b4b;--amber:#e8820c;--red:#d62b2b;--cyan:#0aa5b5;--idle:#8a96a1;
+--gbg:#e6f6ec;--abg:#fff1de;--rbg:#fde8e8;--cbg:#e0f6f8}
+@media (prefers-color-scheme:dark){:root{--bg:#0e151b;--card:#17212a;--ink:#e8eef3;--mute:#93a1ad;--line:#2a3743;
+--gbg:#12301f;--abg:#35230b;--rbg:#3a1414;--cbg:#0c3036}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,Segoe UI,sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:16px}
+header{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;margin-bottom:12px}
+h1{font-size:20px;margin:0}
+.sub{color:var(--mute);font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:99px;padding:3px 10px;font-size:12px;font-weight:600;background:var(--card)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--idle)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+#banner{border-radius:12px;padding:16px 18px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;border:2px solid var(--green);background:var(--gbg)}
+#banner h2{margin:0;font-size:22px}
+#banner p{margin:2px 0 0;color:var(--mute)}
+#banner[data-s=ADVISORY]{border-color:var(--amber);background:var(--abg)}
+#banner[data-s=CRITICAL]{border-color:var(--red);background:var(--rbg);animation:pulse 1s infinite}
+#banner[data-s=TECHNICAL]{border-color:var(--cyan);background:var(--cbg)}
+@keyframes pulse{50%{box-shadow:0 0 0 6px color-mix(in srgb,var(--red) 25%,transparent)}}
+@media (prefers-reduced-motion:reduce){#banner{animation:none!important}}
+button{font:inherit;font-weight:600;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:9px 14px;cursor:pointer}
+button.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+button:disabled{opacity:.4;cursor:not-allowed}
+.grid{display:grid;gap:12px;margin-top:12px}
+.tiles{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.tile .lab{font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.04em}
+.tile .val{font-size:34px;font-weight:700;font-variant-numeric:tabular-nums;margin:2px 0}
+.tile .cap{font-size:12px;color:var(--mute)}
+.warn{color:var(--cyan)}
+.two{grid-template-columns:2fr 1fr}
+@media(max-width:800px){.two{grid-template-columns:1fr}}
+h3{font-size:14px;margin:0 0 8px}
+canvas{width:100%;height:280px;display:block}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--mute);margin-top:6px;flex-wrap:wrap}
+.legend i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:5px}
+.out{display:grid;grid-template-columns:auto 1fr auto;gap:2px 10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.out:first-of-type{border-top:0}
+.out .ic{grid-row:span 2;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--bg);font-size:16px}
+.out .nm{font-weight:600}
+.out .dt{font-size:12px;color:var(--mute);grid-column:2/4}
+.chip{font-size:12px;font-weight:700;padding:2px 9px;border-radius:99px;background:var(--bg);border:1px solid var(--line)}
+.chip.sent,.chip.on,.chip.playing{background:var(--gbg);border-color:var(--green);color:var(--green)}
+.chip.sending{background:var(--abg);border-color:var(--amber);color:var(--amber)}
+.chip.failed{background:var(--rbg);border-color:var(--red);color:var(--red)}
+.chip.not_configured,.chip.silenced{background:var(--abg);border-color:var(--amber);color:var(--amber)}
+#log{list-style:none;margin:0;padding:0;max-height:300px;overflow:auto}
+#log li{padding:7px 0;border-top:1px solid var(--line);font-size:13px}
+#log li:first-child{border-top:0}
+#log b{font-variant-numeric:tabular-nums}
+.k-state b{color:var(--amber)}.k-notify b{color:var(--green)}.k-ack b{color:var(--cyan)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+footer{margin:16px 0;color:var(--mute);font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Perioperative Temperature Monitor</h1>
+      <div class="sub"><span id="mode">BENCH PROTOTYPE</span> · Case <span id="caseid">none</span> · elapsed <span id="elapsed">00:00</span></div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <span class="pill"><span class="dot" id="linkdot"></span><span id="linktxt">Waiting for Pico</span></span>
+    </div>
+  </header>
+
+  <section id="banner" data-s="NORMAL" aria-live="polite">
+    <div><h2 id="b-title">NORMAL</h2><p id="b-msg">Waiting for data.</p></div>
+    <button class="primary" id="ack" disabled>Acknowledge alert</button>
+  </section>
+
+  <section class="grid tiles">
+    <div class="card tile"><div class="lab">Probe · DS18B20 (waterproof)</div><div class="val" id="t-contact">--.-</div><div class="cap">Smoothed <span id="t-smooth">--.-</span> °C</div></div>
+    <div class="card tile" style="display:none"><div class="lab">Infrared · MLX90614</div><div class="val" id="t-ir">--.-</div><div class="cap" id="t-ircap">Surface temperature</div></div>
+    <div class="card tile"><div class="lab" id="belowlab">Time below 36.0 °C</div><div class="val" id="t-below">00:00</div><div class="cap">Cumulative, whole case</div></div>
+    <div class="card tile" style="display:none"><div class="lab">Sensor agreement</div><div class="val" id="t-diff">--</div><div class="cap" id="t-diffcap">Difference between channels</div></div>
+  </section>
+
+  <section class="grid two">
+    <div class="card">
+      <h3>Temperature trend</h3>
+      <canvas id="chart" role="img" aria-label="Probe temperature over time"></canvas>
+      <div class="legend"><span><i style="background:var(--ink)"></i>Probe</span>
+        <span><i style="background:var(--amber)"></i>Advisory threshold</span><span><i style="background:var(--red)"></i>Critical threshold</span></div>
+    </div>
+    <div class="card">
+      <h3>Alert outputs</h3>
+      <div class="out"><div class="ic">💡</div><div class="nm">Light ring</div><span class="chip" id="o-light-c">idle</span><div class="dt" id="o-light-d">No data yet</div></div>
+      <div class="out"><div class="ic">🔊</div><div class="nm">Sound</div><span class="chip" id="o-sound-c">idle</span><div class="dt" id="o-sound-d">No data yet</div></div>
+      <div class="out"><div class="ic">💬</div><div class="nm">WhatsApp group</div><span class="chip" id="o-wa-c">idle</span><div class="dt" id="o-wa-d">No message sent yet</div></div>
+    </div>
+  </section>
+
+  <section class="grid two">
+    <div class="card"><h3>Recent events</h3><ul id="log"></ul></div>
+    <div class="card">
+      <h3>Case</h3>
+      <div class="sub">Label</div>
+      <input id="label" value="TEST-001" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit">
+      <div class="actions">
+        <button class="primary" id="startstop">Start case</button>
+        <button id="export">Handover / Export</button>
+        <button id="csv">Readings CSV</button>
+      </div>
+    </div>
+  </section>
+  <footer id="foot">Bench prototype. Not a medical device. Thresholds shown are those running on the Pico.</footer>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let S=null, pts=[], WINDOW_S=600;
+const fmt=(v,d=1)=>v==null?'--':v.toFixed(d);
+const mmss=s=>{s=Math.max(0,Math.round(s));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')};
+const hhmmss=ts=>new Date(ts*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+
+function effState(s){return (s.technical||s.disagree)?'TECHNICAL':s.state}
+const MSG={
+ NORMAL:['NORMAL','Temperature within range. No alarm.'],
+ ADVISORY:['ADVISORY: temperature low','Below the advisory threshold for the required time. Start active warming.'],
+ CRITICAL:['CRITICAL: escalate warming','Below the critical threshold or falling fast. Alarm is latched.'],
+ TECHNICAL:['TECHNICAL FAULT','Check sensors.']};
+
+function render(s){
+  S=s;
+  const eff=effState(s);
+  $('banner').dataset.s=eff;
+  let [t,m]=MSG[eff];
+  if(eff==='TECHNICAL'){
+    m = s.disagree ? `Channels disagree by ${fmt(s.diff)} °C. Both values are shown, neither is averaged.`
+      : s.technical ? 'Probe lost or out of range.' : 'Check sensors.';
+  }
+  if(eff==='CRITICAL'&&s.acknowledged) m='Acknowledged. Condition stays latched until back in range.';
+  if(s.link==='waiting') {t='WAITING FOR DEVICE'; m='No data from the Pico yet.'}
+  if(s.link==='lost') {t='LINK LOST'; m='No data from the Pico for more than 5 s. Check USB cable and Thonny.'}
+  $('b-title').textContent=t; $('b-msg').textContent=m;
+  $('ack').disabled=!(s.state==='CRITICAL'&&!s.acknowledged);
+
+  $('linkdot').style.background=s.link==='connected'?css('--green'):s.link==='lost'?css('--red'):css('--idle');
+  $('linktxt').textContent=s.link==='connected'?'Pico connected':s.link==='lost'?'Pico link lost':'Waiting for Pico';
+  $('mode').textContent=s.demo?'BENCH PROTOTYPE · DEMO THRESHOLDS':'BENCH PROTOTYPE';
+  $('belowlab').textContent=`Time below ${fmt(s.adv)} °C`;
+  $('caseid').textContent=s.case?s.case.label:'none (not recording)';
+  $('startstop').textContent=s.case?'Stop case':'Start case';
+
+  $('t-contact').textContent=fmt(s.contact)+' °C';
+  $('t-smooth').textContent=fmt(s.smooth);
+  $('t-ir').textContent=s.ir==null?'--':fmt(s.ir)+' °C';
+  $('t-ircap').textContent=s.ir==null?'Not connected yet (add MLX90614 to code.py)':'Surface temperature';
+  $('t-below').textContent=mmss((s.min_below||0)*60);
+  $('t-diff').textContent=s.diff==null?'--':fmt(s.diff)+' °C';
+  $('t-diff').className='val '+(s.disagree?'warn':'');
+  $('t-diffcap').textContent=s.disagree?'Beyond margin: fault':s.diff==null?'Needs both channels':'Within margin';
+
+  const o=s.outputs, ago=x=>x?` · since ${hhmmss(x)}`:'';
+  const dotc={GREEN:'🟢',AMBER:'🟠',RED:'🔴',CYAN:'🔵',OFF:'⚫'};
+  setOut('light',o.light.status,`${dotc[o.light.value]||''} ${o.light.value}${ago(o.light.since)}`);
+  setOut('sound',o.sound.status,`${o.sound.value==='SILENT'?(o.sound.status==='silenced'?'Silenced by acknowledge':'Silent'):o.sound.value+' pattern'}${ago(o.sound.since)}`);
+  const w=o.whatsapp;
+  $('o-wa-c').className='chip '+w.status; $('o-wa-c').textContent=w.status.replace('_',' ');
+  $('o-wa-d').textContent=(w.status==='idle'?'No message sent yet':w.detail+ago(w.since))+(w.count?` · ${w.count} sent`:'');
+
+  $('log').innerHTML=s.events.map(e=>`<li class="k-${e.kind}"><b>${hhmmss(e.ts)}</b> · ${esc(e.title)}${e.detail?`<br><span class="sub">${esc(e.detail)}</span>`:''}</li>`).join('')||'<li class="sub">No events yet.</li>';
+}
+function setOut(k,status,detail){const c=$(`o-${k}-c`);c.className='chip '+status;c.textContent=status;$(`o-${k}-d`).textContent=detail}
+const esc=t=>String(t).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+function draw(){
+  const cv=$('chart'),dpr=devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;
+  cv.width=W*dpr;cv.height=H*dpr;const g=cv.getContext('2d');g.scale(dpr,dpr);
+  const now=pts.length?pts[pts.length-1].ts:Date.now()/1000, t0=now-WINDOW_S;
+  const vis=pts.filter(p=>p.ts>=t0);
+  const adv=S?S.adv:36, crit=S?S.crit:35.5;
+  let vals=vis.flatMap(p=>[p.contact,p.ir]).filter(v=>v!=null).concat([adv,crit]);
+  let lo=Math.floor(Math.min(...vals,adv)-0.5), hi=Math.ceil(Math.max(...vals,adv)+0.5);
+  const L=44,R=10,T=8,B=22,x=ts=>L+(ts-t0)/WINDOW_S*(W-L-R), y=v=>T+(hi-v)/(hi-lo)*(H-T-B);
+  g.font='11px system-ui';g.fillStyle=css('--mute');g.strokeStyle=css('--line');g.lineWidth=1;
+  for(let v=lo;v<=hi;v+=(hi-lo>6?2:1)){g.beginPath();g.moveTo(L,y(v));g.lineTo(W-R,y(v));g.stroke();g.fillText(v+'°',6,y(v)+4)}
+  for(let m=0;m<=10;m+=2){const xx=L+m/10*(W-L-R);g.textAlign=m===10?'right':m===0?'left':'center';g.fillText(m===10?'now':(m-10)+' min',xx,H-6)}
+  g.textAlign='left';g.setLineDash([6,4]);g.lineWidth=1.5;
+  [[adv,'--amber'],[crit,'--red']].forEach(([v,c])=>{g.strokeStyle=css(c);g.beginPath();g.moveTo(L,y(v));g.lineTo(W-R,y(v));g.stroke()});
+  g.setLineDash([]);g.lineWidth=2;
+  [['ir','--cyan'],['contact','--ink']].forEach(([k,c])=>{
+    g.strokeStyle=css(c);g.beginPath();let on=false;
+    vis.forEach(p=>{if(p[k]==null){on=false;return}on?g.lineTo(x(p.ts),y(p[k])):g.moveTo(x(p.ts),y(p[k]));on=true});g.stroke()});
+}
+addEventListener('resize',draw);
+
+function connect(){
+  const es=new EventSource('/stream');
+  es.onmessage=e=>{
+    const m=JSON.parse(e.data);
+    if(m.type==='sample'){pts.push({ts:m.ts,contact:m.contact,ir:m.ir});if(pts.length>3000)pts.shift();render(m.state);draw()}
+    else if(m.type==='state'){render(m.state)}
+    else if(m.type==='event'&&S){S.events.unshift(m.event);render(S)}
+  };
+  es.onerror=()=>{$('linktxt').textContent='Dashboard lost the service';$('linkdot').style.background=css('--red')};
+}
+fetch('/api/history').then(r=>r.json()).then(h=>{pts=h.readings.map(r=>({ts:r.ts,contact:r.contact,ir:r.ir}));connect()}).catch(connect);
+
+$('ack').onclick=()=>fetch('/api/ack',{method:'POST'});
+$('startstop').onclick=()=>fetch('/api/case',{method:'POST',headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({action:S&&S.case?'stop':'start',label:$('label').value})});
+$('export').onclick=()=>location.href='/api/export';
+$('csv').onclick=()=>location.href='/api/export?fmt=csv';
+setInterval(()=>{if(S&&S.case)$('elapsed').textContent=mmss(Date.now()/1000-S.case.started)},1000);
+</script>
+</body>
+</html>
