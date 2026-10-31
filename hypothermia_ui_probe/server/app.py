@@ -9,7 +9,7 @@ Run:
 
 Then open http://127.0.0.1:5050   (5050, not 5000: macOS AirPlay Receiver uses 5000)
 """
-import argparse, csv, io, json, os, queue, random, sqlite3, threading, time, urllib.parse, urllib.request
+import argparse, csv, io, json, os, queue, random, sqlite3, threading, time, urllib.error, urllib.parse, urllib.request
 from flask import Flask, Response, jsonify, request, send_from_directory
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -18,10 +18,33 @@ DB_PATH = os.path.join(HERE, "monitor.db")
 # ---- settings you may change ------------------------------------------------
 DISAGREE_C = 1.0          # CR-4: channels disagreeing by more than this raise a fault (set from your ER)
 WA_MIN_GAP_S = 20         # do not send the same kind of WhatsApp message more often than this
-NOTIFY_ON = {"ADVISORY", "CRITICAL", "TECHNICAL"}   # states that trigger a WhatsApp message
-WA_PROVIDER = os.environ.get("WA_PROVIDER", "none")  # none | callmebot | twilio
-# callmebot: WA_PHONE, WA_APIKEY      twilio: TWILIO_SID, TWILIO_TOKEN, TWILIO_FROM, WA_TO
+NOTIFY_ON = {"CRITICAL"}  # states that trigger a WhatsApp message (team decision: Critical only)
 # -----------------------------------------------------------------------------
+
+# ---- WhatsApp settings: read from whatsapp_settings.txt (never commit that file) ----
+# Lines look like:  TWILIO_SID = "AC..."   Lines starting with # are ignored.
+WA_SETTINGS_FILE = os.path.join(HERE, "whatsapp_settings.txt")
+WA = {}
+if os.path.exists(WA_SETTINGS_FILE):
+    for line in open(WA_SETTINGS_FILE, encoding="utf-8"):
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            WA[k.strip()] = v.strip().strip('"').strip("'").strip()
+for k in ("TWILIO_SID", "TWILIO_TOKEN", "TWILIO_FROM", "TWILIO_TO", "WA_PROVIDER", "WA_PHONE", "WA_APIKEY", "IMESSAGE_TO"):
+    if k in os.environ:                       # environment variables still work and take priority
+        WA[k] = os.environ[k]
+if "WA_TO" in os.environ and "TWILIO_TO" not in WA:
+    WA["TWILIO_TO"] = os.environ["WA_TO"]
+WA_PROVIDER = (WA.get("WA_PROVIDER") or ("imessage" if WA.get("IMESSAGE_TO") else "callmebot" if WA.get("WA_APIKEY")
+               else "twilio" if WA.get("TWILIO_SID") else "none")).lower()
+PROVIDERS = ("imessage", "callmebot", "twilio")  # none | callmebot | twilio
+
+
+def wa_number(x):
+    """Accepts '+1438...' or 'whatsapp:+1438...' and returns 'whatsapp:+1438...'."""
+    x = x.replace(" ", "")
+    return x if x.startswith("whatsapp:") else "whatsapp:" + x
 
 app = Flask(__name__, static_folder=os.path.join(HERE, "static"))
 lock = threading.RLock()
@@ -84,28 +107,88 @@ def add_event(kind, title, detail=""):
 
 
 # ---- WhatsApp ---------------------------------------------------------------
+def twilio_send(text):
+    import base64
+    sid, tok = WA["TWILIO_SID"], WA["TWILIO_TOKEN"]
+    data = urllib.parse.urlencode({"From": wa_number(WA["TWILIO_FROM"]),
+                                   "To": wa_number(WA["TWILIO_TO"]), "Body": text}).encode()
+    req = urllib.request.Request(f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json", data)
+    req.add_header("Authorization", "Basic " + base64.b64encode(f"{sid}:{tok}".encode()).decode())
+    urllib.request.urlopen(req, timeout=10).read()
+
+
+def callmebot_send(text):
+    url = "https://api.callmebot.com/whatsapp.php?" + urllib.parse.urlencode(
+        {"phone": WA["WA_PHONE"].replace(" ", ""), "text": text, "apikey": WA["WA_APIKEY"]})
+    reply = urllib.request.urlopen(url, timeout=15).read().decode(errors="ignore")
+    if "APIKey is invalid" in reply or "ERROR" in reply.upper() and "queued" not in reply.lower():
+        raise RuntimeError("CallMeBot refused the message: " + " ".join(reply.split())[:200])
+
+
+IMESSAGE_SCRIPT = """
+on run argv
+    set msg to item 1 of argv
+    tell application "Messages"
+        set svc to 1st account whose service type = iMessage
+        repeat with i from 2 to count of argv
+            set who to item i of argv
+            try
+                send msg to participant who of svc
+            on error
+                send msg to buddy who of svc
+            end try
+        end repeat
+    end tell
+end run
+"""
+
+
+def imessage_send(text):
+    """Sends through the Mac's Messages app (must be signed in to iMessage)."""
+    import subprocess
+    to = [x.strip() for x in WA["IMESSAGE_TO"].split(",") if x.strip()]
+    r = subprocess.run(["osascript", "-e", IMESSAGE_SCRIPT, text] + to, capture_output=True, text=True, timeout=30)
+    if r.returncode != 0:
+        err = r.stderr.strip()
+        if "-1743" in err or "Not authorized" in err:
+            err = "macOS blocked access to Messages. System Settings > Privacy & Security > Automation > Terminal: turn on Messages."
+        raise RuntimeError(err or "osascript failed")
+
+
+def provider_send(text):
+    if WA_PROVIDER == "imessage":
+        imessage_send(text)
+    elif WA_PROVIDER == "callmebot":
+        callmebot_send(text)
+    else:
+        twilio_send(text)
+
+
+def wa_error(e):
+    """Turns a Twilio error into a readable sentence."""
+    if isinstance(e, KeyError):
+        return f"Missing {e} in whatsapp_settings.txt"
+    if isinstance(e, urllib.error.HTTPError):
+        try:
+            body = json.loads(e.read().decode())
+            return f"Twilio error {body.get('code')}: {body.get('message')}"
+        except Exception:
+            return f"Twilio HTTP {e.code}"
+    return str(e)
+
+
 def wa_send(kind, text):
     """Runs in its own thread so a slow network never delays the dashboard."""
     o = S["outputs"]["whatsapp"]
     cid = S["case"]["id"] if S["case"] else None
     status, err = "sent", ""
     try:
-        if WA_PROVIDER == "callmebot":
-            url = "https://api.callmebot.com/whatsapp.php?" + urllib.parse.urlencode(
-                {"phone": os.environ["WA_PHONE"], "text": text, "apikey": os.environ["WA_APIKEY"]})
-            urllib.request.urlopen(url, timeout=10).read()
-        elif WA_PROVIDER == "twilio":
-            sid, tok = os.environ["TWILIO_SID"], os.environ["TWILIO_TOKEN"]
-            data = urllib.parse.urlencode({"From": "whatsapp:" + os.environ["TWILIO_FROM"],
-                                           "To": "whatsapp:" + os.environ["WA_TO"], "Body": text}).encode()
-            req = urllib.request.Request(f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json", data)
-            import base64
-            req.add_header("Authorization", "Basic " + base64.b64encode(f"{sid}:{tok}".encode()).decode())
-            urllib.request.urlopen(req, timeout=10).read()
+        if WA_PROVIDER in PROVIDERS:
+            provider_send(text)
         else:
-            status, err = "not_configured", "WA_PROVIDER is 'none' (dry run: message was NOT sent)"
+            status, err = "not_configured", "No whatsapp_settings.txt found (dry run: message was NOT sent)"
     except Exception as e:                        # network down, bad key, ...
-        status, err = "failed", str(e)
+        status, err = "failed", wa_error(e)
     with lock:
         o.update(status=status, since=time.time(), detail=(text if status == "sent" else err))
         if status == "sent":
@@ -113,7 +196,7 @@ def wa_send(kind, text):
         conn.execute("INSERT INTO notifications(case_id,ts,channel,status,message,error) VALUES(?,?,?,?,?,?)",
                      (cid, time.time(), "whatsapp", status, text, err))
         conn.commit()
-        add_event("notify", f"WhatsApp {status.replace('_', ' ')}", text if status == "sent" else err)
+        add_event("notify", f"Phone alert {status.replace('_', ' ')}", text if status == "sent" else err)
         push({"type": "state", "state": S})
 
 
@@ -124,12 +207,13 @@ def maybe_notify(eff):
     if now - last_wa.get(eff, 0) < WA_MIN_GAP_S:
         return
     last_wa[eff] = now
-    t = S["contact"]
+    t = S["smooth"] if S["smooth"] is not None else S["contact"]
+    now_txt = "unknown" if t is None else f"{t:.1f} C"
     text = {
-        "ADVISORY": f"ADVISORY: temperature below {S['adv']:.1f} C for the required time (now {t:.1f} C). Please start active warming.",
-        "CRITICAL": f"CRITICAL: temperature below {S['crit']:.1f} C or falling fast (now {t:.1f} C). Escalate warming now.",
-        "TECHNICAL": "TECHNICAL FAULT: temperature channel lost, out of range or channels disagree. Check sensors.",
-    }[eff] + f" Case {S['case']['label']}."
+        "ADVISORY": f"ADVISORY: probe temperature below {S['adv']:.1f} C (now {now_txt}). Please start active warming.",
+        "CRITICAL": f"CRITICAL: probe temperature below {S['crit']:.1f} C (now {now_txt}). Escalate warming now.",
+        "TECHNICAL": "TECHNICAL FAULT: probe lost or out of range. Check the sensor.",
+    }[eff] + f" Case {S['case']['label']}. Bench prototype, not a clinical alert."
     S["outputs"]["whatsapp"].update(status="sending", since=now, detail="Sending...")
     threading.Thread(target=wa_send, args=(eff, text), daemon=True).start()
 
@@ -349,7 +433,18 @@ if __name__ == "__main__":
     ap.add_argument("--sim", action="store_true", help="run a scripted demo case with no hardware")
     ap.add_argument("--list-ports", action="store_true")
     ap.add_argument("--http-port", type=int, default=5050, help="web page port (default 5050)")
+    ap.add_argument("--test-whatsapp", action="store_true", help="send one test WhatsApp message and exit")
     a = ap.parse_args()
+    if a.test_whatsapp:
+        if WA_PROVIDER not in PROVIDERS:
+            print("No alert settings found. Put whatsapp_settings.txt in the server folder.")
+            raise SystemExit(1)
+        try:
+            provider_send("Test from the hypothermia monitor dashboard. WhatsApp alerts are working.")
+            print("Test message sent with", WA_PROVIDER, "to", WA.get("IMESSAGE_TO") or WA.get("WA_PHONE") or WA.get("TWILIO_TO"))
+        except Exception as e:
+            print("Test FAILED:", wa_error(e))
+        raise SystemExit
     if a.list_ports:
         from serial.tools import list_ports
         for p in list_ports.comports():
@@ -362,5 +457,8 @@ if __name__ == "__main__":
     else:
         print("Give --port <data port> or --sim")
         raise SystemExit(1)
+    print("Phone alerts:", f"{WA_PROVIDER}, Critical alerts only, sent while a case is running" if WA_PROVIDER in PROVIDERS
+          else "OFF (no whatsapp_settings.txt found)")
     print(f"Dashboard: open http://127.0.0.1:{a.http_port}")
     app.run(host="127.0.0.1", port=a.http_port, threaded=True)
+
