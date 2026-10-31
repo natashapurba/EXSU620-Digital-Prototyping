@@ -1,5 +1,5 @@
 # PROBE TRIAL - the waterproof DS18B20 probe is the ONLY temperature input.
-# Bands: above 19.0 C = NORMAL (green), 17.0 to 19.0 C = ADVISORY (amber), below 17.0 C = CRITICAL (red, fast flashing).
+# Bands: above 36.0 C = NORMAL (green), 35.5 to 36.0 C = ADVISORY (amber), below 35.5 C = CRITICAL (red, fast flashing).
 # Same ring, speaker, button and optional voice files as the main monitor. The MCP9808 is not used here.
 # UI version: also sends each reading to the laptop dashboard (hypothermia_ui/server/app.py) through a second
 # USB port, and accepts ACK from the dashboard's Acknowledge button. Needs boot.py on CIRCUITPY.
@@ -13,8 +13,8 @@ except ImportError:
     PROBE_LIBS = False
 
 # ===================== SETTINGS =====================
-NORMAL_ABOVE_C  = 19.0    # above this = NORMAL (green)
-CRITICAL_BELOW_C = 17.0   # below this = CRITICAL (red); in between = ADVISORY (amber)
+NORMAL_ABOVE_C  = 36.0    # above this = NORMAL (green); at or below = ADVISORY (amber)
+CRITICAL_BELOW_C = 35.5   # below this = CRITICAL (red)
 CRITICAL_FLASH_HZ = 2.5   # red flashes this many times per second (kept under 3 for photosensitivity)
 TECH_FLASH_HZ     = 1.0   # cyan flashes for a technical fault
 HOLD_S          = 3       # a new band must hold this long before the colour changes (0 = instant)
@@ -289,7 +289,7 @@ while True:
             "state": state,
             "technical": technical,
             "ack": acknowledged,
-            "min_at_or_below_19": round(seconds_below_normal / 60, 2),
+            "min_at_or_below_adv": round(seconds_below_normal / 60, 2),
             "min_below_36": round(seconds_below_normal / 60, 2),     # dashboard name for the same counter
             "fall": 0.0,
             "ring": "CYAN" if technical else {"NORMAL": "GREEN", "ADVISORY": "AMBER", "CRITICAL": "RED"}[state],
