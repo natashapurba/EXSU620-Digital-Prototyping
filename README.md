@@ -14,31 +14,36 @@ hypothermia_ui_probe/          <- MAIN FOLDER
 ├── pico/
 │   ├── boot.py                <- turns on the second USB port (data port) for the dashboard
 │   └── code.py                <- the monitor program (probe, ring, speaker, button)
+├── .gitignore             <- keeps secrets and the database off GitHub
 ├── server/
 │   ├── app.py                 <- Flask dashboard, reads the Pico and serves the web page
-│   └── static/index.html      <- the dashboard page
+│   ├── static/index.html      <- the dashboard page
+│   └── whatsapp_settings.example.txt  <- template for the Twilio WhatsApp settings
 ├── check_ports.py             <- tool that finds which USB port is sending data
 └── README.md
 ```
 
 ---
 
-## 2. Alarm logic (probe trial values)
+## 2. Alarm logic (Figure 3 of the project card, clinical thresholds, 30 s bench time scale)
 
-| Probe temperature (3 s average) | State | Ring | Sound |
+All dwell times are 30 s on the bench (`DWELL_S` in `pico/code.py`); the clinical value is 300 s.
+
+
+| Rule | Result | Ring | Sound |
 |---|---|---|---|
-| Above 19.0 °C | NORMAL | Green, steady | Silent |
-| 17.0 to 19.0 °C | ADVISORY | Amber, steady | 3 beeps every 30 s |
-| Below 17.0 °C | CRITICAL | Red, flashing at 2.5 Hz | 10 beeps every 10 s until acknowledged |
-| Probe lost or outside 0 to 50 °C for 3 s | TECHNICAL | Cyan, flashing | 1 chirp every 5 s |
+| Probe above 36.0 °C (and no alarm active) | NORMAL | Green, steady | Silent |
+| Below 36.0 °C continuously for the dwell | ADVISORY | Amber, steady | 3 beeps every 30 s |
+| In Advisory: below 35.5 °C for the dwell, or a fall of 0.5 °C within 15 min | CRITICAL (latched) | Red, flashing 2.5 Hz | 10 beeps every 10 s, plus one phone alert |
+| In Advisory: above 36.2 °C for the dwell | back to NORMAL | Green | Silent |
+| In Critical: acknowledged AND back at or above 36.0 °C | back to NORMAL | Green | Silent |
+| No valid reading for 3 s, or reading outside 25 to 42 °C | TECHNICAL | Cyan, flashing | 1 chirp every 5 s |
+| No valid reading yet (start-up, the first seconds of a fault) | NO READING | Dim white, never green | Silent |
 
-- A new state has to hold for 3 s before the display changes, so single noisy readings are ignored.
-- The acknowledge button (or the Acknowledge button on the dashboard) silences the sound only. The ring stays red until the temperature recovers.
-- The button needs a new press. A stuck or shorted button cannot silence an alarm.
-- The thresholds are shifted for bench testing with water and an aquarium heater (20 to 34 °C). They are **not** clinical values. Clinically, hypothermia is a core temperature below 36.0 °C (NICE CG65).
-- The red flash stays below 3 Hz to reduce photosensitivity risk.
-
----
+- The alarm rules use a 3-sample moving average. The raw value is reported and used for the time-below-36.0 °C counter.
+- Acknowledge (dashboard button) silences the Critical sound only. The ring stays red until the device is back in range.
+- Pressing **Start case** resets the time-below counter, so the handover export covers that case only.
+- **Scripted test mode:** the dashboard buttons ER-4, ER-5, ER-6 and ER-7 make the Pico follow a fixed temperature profile instead of the probe, so the 5-minute rules can be verified repeatably. See `verification/README.md`.
 
 ## 3. Hardware and wiring
 
@@ -77,7 +82,7 @@ Avoid the **3V3_EN** and **RUN** pins. A wire there switches the board off and C
 
 To check the board in Thonny, the first line in the Shell should be:
 ```
-PROBE TRIAL - normal above 19.0 C, advisory 17.0 to 19.0 C, critical below 17.0 C
+MONITOR v3.1 - advisory below 36.0 C for 30 s, critical below 35.5 C for 30 s or falling 0.5 C in 15 min
 ```
 
 ---
@@ -117,6 +122,21 @@ To try the dashboard with no hardware, run a scripted demo:
 python3 server/app.py --sim
 ```
 
+### Phone alerts (optional)
+
+The dashboard sends **one phone alert each time the monitor enters CRITICAL**, while a case is running. The default is **iMessage from the Mac** running the dashboard (free, uses the Messages app). Twilio WhatsApp is also supported but needs a paid account for custom text.
+
+1. Copy `server/whatsapp_settings.example.txt`, rename the copy to `whatsapp_settings.txt`, and put your number after `IMESSAGE_TO`.
+2. Make sure the Messages app on the Mac is signed in to iMessage.
+3. Test it:
+   ```bash
+   python3 server/app.py --test-whatsapp
+   ```
+   The first time, macOS asks to let Terminal control Messages. Click **OK**.
+4. Start the dashboard as usual and press **Start case**.
+
+**Never upload `whatsapp_settings.txt` to GitHub.** The `.gitignore` file already excludes it.
+
 ### Stopping
 
 - Dashboard: press **Control+C** in its Terminal window.
@@ -153,4 +173,4 @@ python3 server/app.py --sim
 
 ## 9. Team
 
-EXSU 620 Digital Prototyping, McGill University. Group 5. 
+EXSU 620 Digital Prototyping, McGill University. Group of 5.
