@@ -1,0 +1,14 @@
+# Copy this file, rename the copy to whatsapp_settings.txt (same folder), and keep ONE option.
+# NEVER upload whatsapp_settings.txt to GitHub.
+
+# ---- Option 1: iMessage from this Mac (free; Messages app must be signed in) ----
+WA_PROVIDER = "imessage"
+IMESSAGE_TO = "+1XXXXXXXXXX"
+# several people: IMESSAGE_TO = "+1XXXXXXXXXX, +1YYYYYYYYYY, name@icloud.com"
+
+# ---- Option 2: Twilio (paid account needed for custom text) ----
+# WA_PROVIDER = "twilio"
+# TWILIO_SID = "paste your Account SID here"
+# TWILIO_TOKEN = "paste your Auth Token here"
+# TWILIO_FROM = "whatsapp:+1XXXXXXXXXX"
+# TWILIO_TO = "whatsapp:+1XXXXXXXXXX"

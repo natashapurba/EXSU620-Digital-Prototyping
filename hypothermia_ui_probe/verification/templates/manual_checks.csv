@@ -1,0 +1,4 @@
+test,item,expected,observed,pass,operator,notes
+ER1,Dashboard and Thonny show temperature with one decimal (0.1 C),one decimal,,,,
+ER5,iMessage received on the phone for each ER5 run,received,,,,write the number received
+ER6,Handover export shows minutes below 36.0 C for the ER6 case,shown,,,,

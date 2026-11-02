@@ -1,0 +1,2 @@
+WA_PROVIDER = "imessage"
+IMESSAGE_TO = "+14389232004"

@@ -1,0 +1,8 @@
+test,bath,clock_time,reference_C,probe_C,operator,notes
+ER1,run 1 33.7 C,,33.7,33.3,Natasha,run 1 uncorrected (calibration)
+ER1,run 1 35.2 C,,35.2,34.7,Natasha,run 1 uncorrected (calibration)
+ER1,run 1 36.2 C,,36.2,35.7,Natasha,run 1 uncorrected (calibration)
+ER1,run 1 37.8 C,,37.8,37.5,Natasha,run 1 uncorrected (calibration)
+ER1,run 1 38.7 C,,38.7,38.3,Natasha,run 1 uncorrected (calibration)
+ER1,run 1 39.5 C,,39.5,39.0,Natasha,run 1 uncorrected (calibration)
+ER1,run 1 40.8 C,,40.8,40.3,Natasha,run 1 uncorrected (calibration)

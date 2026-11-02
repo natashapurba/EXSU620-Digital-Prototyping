@@ -1,0 +1,8 @@
+test,bath,clock_time,reference_C,probe_C,operator,notes
+ER1,run 2 34.7 C,,34.7,34.7,Natasha,run 2 calibrated firmware (validation)
+ER1,run 2 35.7 C,,35.7,35.7,Natasha,run 2 calibrated firmware (validation)
+ER1,run 2 36.2 C,,36.2,36.2,Natasha,run 2 calibrated firmware (validation)
+ER1,run 2 37.2 C,,37.2,37.2,Natasha,run 2 calibrated firmware (validation)
+ER1,run 2 38.1 C,,38.1,38.1,Natasha,run 2 calibrated firmware (validation)
+ER1,run 2 39.2 C,,39.2,39.1,Natasha,run 2 calibrated firmware (validation)
+ER1,run 2 40.2 C,,40.2,40.2,Natasha,run 2 calibrated firmware (validation)

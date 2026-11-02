@@ -1,0 +1,19 @@
+ER,CR,requirement,metric,operator,limit,unit,min_n
+ER-1,CR-1,"Measure 25 to 42 C, reported to 0.1 C; maximum error after calibration 0.5 C",cal_max_abs_residual,<=,0.5,C,3
+ER-1b,CR-1,"Calibration points span the 25 to 42 C range (at least 3 baths)",cal_points,>=,3,baths,
+ER-1c,CR-1,"Values shown to 0.1 C on the dashboard",manual:ER1,=,pass,,
+ER-2,CR-1,"95 percent of sample intervals between 0.9 and 1.1 s over at least 10 min",intervals_in_0.9_1.1_pct,>=,95,%,590
+ER-2b,CR-1,"No silent gap longer than 5 s",silent_gaps_over_5s,<=,0,gaps,
+ER-3,CR-1,"Step response t90 at most 60 s",t90_max,<=,60,s,6
+ER-3b,CR-1,"At least 3 warm-to-cold steps",steps_warm_to_cold,>=,3,steps,
+ER-3c,CR-1,"At least 3 cold-to-warm steps",steps_cold_to_warm,>=,3,steps,
+ER-4,CR-2,"Advisory onset within 5 s after the dwell below 36.0 C (30 s bench time scale; 300 s clinical)",adv_onset_error,in,-1.5..5,s,5
+ER-5,CR-2,"Critical shown locally within 5 s after the qualifying rule (below 35.5 C for the dwell, or fall of 0.5 C in 15 min)",crit_local_latency_max,<=,5,s,5
+ER-5b,CR-2,"Message send attempt within 10 s after the qualifying rule",msg_attempt_latency_max,<=,10,s,5
+ER-5c,CR-2,"Send status logged as sent for every Critical",msg_logged_sent_pct,>=,100,%,5
+ER-5d,CR-2,"Message received on the phone (checked by eye)",manual:ER5,=,pass,,
+ER-6,CR-3,"Cumulative time below 36.0 C per case within 5 s of the independent calculation",exposure_abs_error_max,<=,5,s,1
+ER-6b,CR-3,"Exposure available in the handover export (checked by eye)",manual:ER6,=,pass,,
+ER-7,CR-1,"Technical fault within 5 s of probe loss or out-of-range reading",technical_latency_max,<=,5,s,10
+ER-7b,CR-1,"No Normal indication without a valid reading",false_normal_samples,<=,0,samples,
+ER-8,CR-4,"Two channels disagreeing by more than 0.5 C for 5 s raise a fault",not_verified,=,pass,,
